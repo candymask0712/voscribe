@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline';">
+  <link rel="stylesheet" href="style.css">
+  <title>Settings — voscribe</title>
+</head>
+<body>
+  <div class="titlebar-drag"></div>
+
+  <div class="settings-container">
+    <h1>Settings</h1>
+
+    <!-- Shortcut -->
+    <section class="section">
+      <h3>Shortcut</h3>
+      <div class="row">
+        <span class="row-label">Record toggle</span>
+        <div class="row-right">
+          <span class="hotkey-badge" id="hotkey-badge">⌥ Space</span>
+          <button class="btn-small" id="btn-change">Change</button>
+        </div>
+      </div>
+      <p class="hint" id="shortcut-hint"></p>
+    </section>
+
+    <!-- ASR Language -->
+    <section class="section">
+      <h3>Recognition Language</h3>
+      <div class="row">
+        <span class="row-label">Language</span>
+        <select id="sel-lang">
+          <option value="auto">Automatic</option>
+          <option value="korean">Korean</option>
+          <option value="english">English</option>
+          <option value="japanese">Japanese</option>
+          <option value="chinese">Chinese</option>
+          <option value="cantonese">Cantonese</option>
+          <option value="french">French</option>
+          <option value="german">German</option>
+          <option value="spanish">Spanish</option>
+          <option value="portuguese">Portuguese</option>
+          <option value="russian">Russian</option>
+          <option value="arabic">Arabic</option>
+          <option value="hindi">Hindi</option>
+          <option value="turkish">Turkish</option>
+          <option value="italian">Italian</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- Learning Mode -->
+    <section class="section">
+      <h3>Learning Mode</h3>
+      <div class="row">
+        <div class="row-left">
+          <span class="row-label">Review before pasting</span>
+          <span class="row-desc">Show transcription for review. Edits teach the model your preferences.</span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="chk-learning">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </section>
+
+    <!-- Microphone -->
+    <section class="section">
+      <h3>Microphone</h3>
+      <div class="row">
+        <span class="row-label">Input device</span>
+        <select id="sel-mic">
+          <option value="">System Default</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- About -->
+    <section class="section about">
+      <span class="about-text">voscribe v1.0.0 — on-device voice-to-text</span>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

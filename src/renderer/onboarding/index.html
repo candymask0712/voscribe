@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline';">
+  <link rel="stylesheet" href="style.css">
+  <title>voscribe — Setup</title>
+</head>
+<body>
+  <div class="titlebar-drag"></div>
+
+  <!-- Step indicators -->
+  <div class="steps-dots" id="steps-dots"></div>
+
+  <!-- Step 0: Welcome -->
+  <section class="step" id="step-0">
+    <div class="step-content center">
+      <div class="app-icon">🎙</div>
+      <h1>voscribe</h1>
+      <p class="subtitle">Voice-to-text powered by on-device AI</p>
+      <p class="hint">Speak naturally and your words appear as text — everything stays on your Mac.</p>
+    </div>
+  </section>
+
+  <!-- Step 1: Permissions -->
+  <section class="step hidden" id="step-1">
+    <div class="step-content">
+      <h2>Permissions</h2>
+      <p class="subtitle">voscribe needs two macOS permissions to work.</p>
+
+      <div class="perm-row">
+        <div class="perm-info">
+          <span class="perm-label">Accessibility</span>
+          <span class="perm-desc">For the global shortcut & text pasting</span>
+        </div>
+        <span class="perm-status" id="perm-ax">Checking...</span>
+        <button class="btn-small" id="btn-ax">Grant</button>
+      </div>
+
+      <div class="perm-row">
+        <div class="perm-info">
+          <span class="perm-label">Microphone</span>
+          <span class="perm-desc">To record your voice</span>
+        </div>
+        <span class="perm-status" id="perm-mic">Checking...</span>
+        <button class="btn-small" id="btn-mic">Grant</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Step 2: Hotkey -->
+  <section class="step hidden" id="step-2">
+    <div class="step-content center">
+      <h2>Set your shortcut</h2>
+      <p class="subtitle">Press this shortcut to start and stop recording.</p>
+      <div class="hotkey-display" id="hotkey-display">⌥ Space</div>
+      <button class="btn-secondary" id="btn-change-hotkey">Change</button>
+      <p class="hint" id="hotkey-hint">Click "Change" then press your preferred key combination.</p>
+    </div>
+  </section>
+
+  <!-- Step 3: Model download -->
+  <section class="step hidden" id="step-3">
+    <div class="step-content center">
+      <h2>Download ASR Model</h2>
+      <p class="subtitle">The speech recognition model runs entirely on your Mac.</p>
+      <div class="model-info">
+        <span class="model-name">Qwen3-ASR-1.7B-8bit</span>
+        <span class="model-size" id="model-size">Checking size...</span>
+      </div>
+      <div class="progress-container hidden" id="progress-container">
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+        <span class="progress-label" id="progress-label">Downloading...</span>
+      </div>
+      <button class="btn-primary" id="btn-download">Download</button>
+    </div>
+  </section>
+
+  <!-- Navigation -->
+  <div class="nav-bar">
+    <button class="btn-secondary hidden" id="btn-back">Back</button>
+    <div class="spacer"></div>
+    <button class="btn-primary" id="btn-next">Get Started</button>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline';">
+  <link rel="stylesheet" href="style.css">
+  <title>Edit transcription</title>
+</head>
+<body>
+  <div class="edit-panel">
+    <div class="header">
+      <span class="title">Edit transcription</span>
+      <span class="hint">Enter to confirm &middot; Esc to cancel</span>
+    </div>
+    <textarea id="editor" rows="4" spellcheck="true" autofocus></textarea>
+    <div class="footer">
+      <span class="badge" id="badge"></span>
+      <div class="spacer"></div>
+      <button class="btn cancel" id="btn-cancel">Cancel</button>
+      <button class="btn confirm" id="btn-confirm">Confirm</button>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>

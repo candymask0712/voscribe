@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; media-src *;">
+  <link rel="stylesheet" href="style.css">
+  <title>voscribe overlay</title>
+</head>
+<body>
+  <div id="overlay" class="overlay hidden">
+    <!-- Recording state -->
+    <div id="recording-view" class="view">
+      <span id="red-dot" class="red-dot"></span>
+      <span id="timer" class="timer">0:00</span>
+      <div id="level-bars" class="level-bars">
+        <span class="bar"></span><span class="bar"></span>
+        <span class="bar"></span><span class="bar"></span>
+        <span class="bar"></span><span class="bar"></span>
+        <span class="bar"></span><span class="bar"></span>
+      </div>
+    </div>
+
+    <!-- Transcribing state -->
+    <div id="transcribing-view" class="view hidden">
+      <div class="spinner"></div>
+      <span class="label">Transcribing...</span>
+    </div>
+
+    <!-- Error state -->
+    <div id="error-view" class="view hidden">
+      <span class="label error-text" id="error-msg">Error</span>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
