@@ -18,7 +18,6 @@ async function saveTargetApp() {
     _savedAppName = await runAppleScript(
       'tell application "System Events" to get name of first application process whose frontmost is true'
     );
-    console.log('[PASTE] saved target app:', _savedAppName);
   } catch {
     _savedAppName = null;
   }
@@ -27,7 +26,6 @@ async function saveTargetApp() {
 async function activateTargetApp() {
   if (!_savedAppName) return;
   try {
-    // Use process name to activate — more reliable than app name
     await runAppleScript(`
       tell application "System Events"
         set frontProcess to first application process whose name is "${_savedAppName}"
@@ -35,46 +33,61 @@ async function activateTargetApp() {
       end tell
     `);
     await new Promise((r) => setTimeout(r, 300));
-    console.log('[PASTE] activated:', _savedAppName);
   } catch (err) {
-    console.error('[PASTE] activate failed:', err.message);
+    console.error('Failed to activate target app:', err.message);
   }
 }
 
-// ── Paste (simple, no clipboard restore) ──────────────────────────────
+function getTargetAppName() {
+  return _savedAppName;
+}
+
+// ── Paste ─────────────────────────────────────────────────────────────
 async function pasteText(text) {
-  // Write text to clipboard — it stays there even if paste fails,
-  // so the user can always manually Cmd+V
   clipboard.writeText(text);
   await new Promise((r) => setTimeout(r, 150));
-
   try {
     await runAppleScript(
       'tell application "System Events" to keystroke "v" using command down'
     );
-    console.log('[PASTE] Cmd+V sent');
   } catch (err) {
-    console.error('[PASTE] Cmd+V failed:', err.message);
+    console.error('Paste failed:', err.message);
   }
 }
 
 // ── Backspace + replace ───────────────────────────────────────────────
 async function replaceLastText(oldText, newText) {
   await activateTargetApp();
-  const script = `
-    tell application "System Events"
-      repeat ${oldText.length} times
-        key code 51
-      end repeat
-    end tell
-  `;
   try {
-    await runAppleScript(script);
+    await runAppleScript(`
+      tell application "System Events"
+        repeat ${oldText.length} times
+          key code 51
+        end repeat
+      end tell
+    `);
   } catch (err) {
-    console.error('[PASTE] backspace failed:', err.message);
+    console.error('Backspace failed:', err.message);
   }
   await new Promise((r) => setTimeout(r, 100));
   await pasteText(newText);
 }
 
-module.exports = { pasteText, replaceLastText, saveTargetApp, activateTargetApp };
+// ── Selected text capture ─────────────────────────────────────────────
+async function getSelectedText() {
+  const saved = clipboard.readText();
+  clipboard.writeText('');
+  try {
+    await runAppleScript(
+      'tell application "System Events" to keystroke "c" using command down'
+    );
+    await new Promise((r) => setTimeout(r, 150));
+    const selected = clipboard.readText();
+    clipboard.writeText(saved || '');
+    if (selected && selected !== saved) return selected;
+  } catch {}
+  clipboard.writeText(saved || '');
+  return null;
+}
+
+module.exports = { pasteText, replaceLastText, saveTargetApp, activateTargetApp, getSelectedText, getTargetAppName };

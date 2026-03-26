@@ -45,7 +45,6 @@ class OverlayManager {
 
     this._win.webContents.on('did-finish-load', () => {
       this._ready = true;
-      console.log('[OVERLAY] renderer ready');
       if (this._readyResolve) this._readyResolve();
     });
 
@@ -60,17 +59,15 @@ class OverlayManager {
     const cursor = screen.getCursorScreenPoint();
     const display = screen.getDisplayNearestPoint(cursor);
     const { x, y, width } = display.workArea;
-    const px = x + Math.round((width - 240) / 2);
-    const py = y + 60;
-    this._win.setPosition(px, py);
-    console.log('[OVERLAY] positioned at', px, py);
+    this._win.setPosition(
+      x + Math.round((width - 240) / 2),
+      y + 60
+    );
   }
 
   async _waitReady() {
     this._ensureWindow();
-    if (!this._ready) {
-      await this._readyPromise;
-    }
+    if (!this._ready) await this._readyPromise;
   }
 
   async showRecording() {
@@ -78,7 +75,6 @@ class OverlayManager {
     this._position();
     this._win.webContents.send('overlay-state', 'recording');
     this._win.showInactive();
-    console.log('[OVERLAY] showRecording — visible:', this._win.isVisible());
   }
 
   showTranscribing() {
@@ -86,7 +82,6 @@ class OverlayManager {
     this._position();
     this._win.webContents.send('overlay-state', 'transcribing');
     if (!this._win.isVisible()) this._win.show();
-    console.log('[OVERLAY] showTranscribing');
   }
 
   showError(message) {
@@ -98,27 +93,22 @@ class OverlayManager {
   startAudioCapture(deviceId) {
     if (!this._win || !this._ready) return;
     this._win.webContents.send('audio-capture', 'start', deviceId || null);
-    console.log('[OVERLAY] audio capture started');
   }
 
   stopAudioCapture() {
     if (!this._win || !this._ready) return;
     this._win.webContents.send('audio-capture', 'stop');
-    console.log('[OVERLAY] audio capture stopped');
   }
 
   hide() {
     if (this._win && !this._win.isDestroyed()) {
       this._win.webContents.send('overlay-state', 'idle');
       this._win.hide();
-      console.log('[OVERLAY] hidden');
     }
   }
 
   destroy() {
-    if (this._win && !this._win.isDestroyed()) {
-      this._win.destroy();
-    }
+    if (this._win && !this._win.isDestroyed()) this._win.destroy();
     this._win = null;
   }
 }

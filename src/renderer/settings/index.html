@@ -66,6 +66,28 @@
       </div>
     </section>
 
+    <!-- AI Mode -->
+    <section class="section">
+      <h3>AI Post-Processing</h3>
+      <div class="row">
+        <span class="row-label">Mode</span>
+        <select id="sel-mode"></select>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <span class="row-label">LLM Endpoint</span>
+        <input type="text" id="ai-endpoint" class="input-text" placeholder="http://localhost:11434/v1/chat/completions">
+      </div>
+      <div class="row" style="margin-top:6px">
+        <span class="row-label">Model</span>
+        <input type="text" id="ai-model" class="input-text" placeholder="llama3.2">
+      </div>
+      <div class="row" style="margin-top:6px">
+        <span class="row-label">API Key</span>
+        <input type="password" id="ai-key" class="input-text" placeholder="Optional">
+      </div>
+      <p class="hint">Raw = no AI processing. Other modes require Ollama or an OpenAI-compatible API.</p>
+    </section>
+
     <!-- Correction Dictionary -->
     <section class="section">
       <h3>Correction Dictionary</h3>
@@ -76,6 +98,32 @@
         <input type="text" id="dict-to" placeholder="To (e.g. React)" spellcheck="false">
         <button class="btn-small" id="btn-dict-add">Add</button>
       </div>
+    </section>
+
+    <!-- Per-App Modes -->
+    <section class="section">
+      <h3>Per-App Mode</h3>
+      <div id="app-mode-list" class="dict-list"></div>
+      <div class="dict-add">
+        <input type="text" id="app-name" placeholder="App name (e.g. Slack)" spellcheck="false">
+        <span class="dict-arrow">→</span>
+        <select id="app-mode-sel"></select>
+        <button class="btn-small" id="btn-app-add">Add</button>
+      </div>
+      <p class="hint">Auto-apply a different AI mode when dictating in a specific app.</p>
+    </section>
+
+    <!-- Snippets -->
+    <section class="section">
+      <h3>Snippets</h3>
+      <div id="snippet-list" class="dict-list"></div>
+      <div class="dict-add">
+        <input type="text" id="snip-trigger" placeholder="Trigger (e.g. 내 이메일)" spellcheck="false">
+        <span class="dict-arrow">→</span>
+        <input type="text" id="snip-expansion" placeholder="Expansion text" spellcheck="false">
+        <button class="btn-small" id="btn-snip-add">Add</button>
+      </div>
+      <p class="hint">Say the trigger phrase and it will be replaced with the expansion text.</p>
     </section>
 
     <!-- Microphone -->

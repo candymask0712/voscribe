@@ -15,6 +15,12 @@ const DEFAULTS = {
   micDeviceId: null,
   soundEnabled: true,
   learningMode: false,
+  aiMode: 'raw',
+  aiEndpoint: 'http://localhost:11434/v1/chat/completions',
+  aiModel: 'llama3.2',
+  aiApiKey: '',
+  snippets: {},
+  appModes: {},
 };
 
 let _prefs = null;

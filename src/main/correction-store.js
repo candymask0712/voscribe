@@ -194,9 +194,6 @@ function recordCorrection(originalText, correctedText) {
   saveLog();
   saveDict();
 
-  console.log('[CORRECTION] recorded', pairs.length, 'pairs, promoted', promoted.length, 'to dict');
-  console.log('[CORRECTION] dict size:', Object.keys(_dict).length);
-
   return promoted;
 }
 

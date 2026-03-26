@@ -89,6 +89,95 @@ selMic.addEventListener('change', () => {
   window.api.prefs.set('micDeviceId', selMic.value || null);
 });
 
+// ── AI Mode ───────────────────────────────────────────────────────────
+const selMode = document.getElementById('sel-mode');
+const aiEndpoint = document.getElementById('ai-endpoint');
+const aiModel = document.getElementById('ai-model');
+const aiKey = document.getElementById('ai-key');
+
+async function loadAIModes() {
+  const modes = await window.api.aiModes.list();
+  const prefs = await window.api.prefs.getAll();
+  selMode.innerHTML = '';
+  for (const m of modes) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = `${m.name} (${m.nameKo})`;
+    selMode.appendChild(opt);
+  }
+  selMode.value = prefs.aiMode || 'raw';
+  aiEndpoint.value = prefs.aiEndpoint || '';
+  aiModel.value = prefs.aiModel || '';
+  aiKey.value = prefs.aiApiKey || '';
+}
+
+selMode.addEventListener('change', () => {
+  window.api.prefs.set('aiMode', selMode.value);
+});
+aiEndpoint.addEventListener('change', () => {
+  window.api.prefs.set('aiEndpoint', aiEndpoint.value.trim());
+});
+aiModel.addEventListener('change', () => {
+  window.api.prefs.set('aiModel', aiModel.value.trim());
+});
+aiKey.addEventListener('change', () => {
+  window.api.prefs.set('aiApiKey', aiKey.value.trim());
+});
+
+// ── Per-App Modes ─────────────────────────────────────────────────────
+const appModeList = document.getElementById('app-mode-list');
+const appNameInput = document.getElementById('app-name');
+const appModeSel = document.getElementById('app-mode-sel');
+
+async function loadAppModes() {
+  const modes = await window.api.aiModes.list();
+  const prefs = await window.api.prefs.getAll();
+  const appModes = prefs.appModes || {};
+
+  // Populate mode selector
+  appModeSel.innerHTML = '';
+  for (const m of modes) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = `${m.name} (${m.nameKo})`;
+    appModeSel.appendChild(opt);
+  }
+
+  // Render list
+  appModeList.innerHTML = '';
+  for (const [app, mode] of Object.entries(appModes)) {
+    const modeInfo = modes.find((m) => m.id === mode);
+    const el = document.createElement('div');
+    el.className = 'dict-entry';
+    el.innerHTML = `
+      <span class="dict-from">${escHtml(app)}</span>
+      <span class="dict-arrow-sm">→</span>
+      <span class="dict-to">${modeInfo ? modeInfo.name : mode}</span>
+      <button class="dict-del" data-key="${escAttr(app)}">✕</button>
+    `;
+    appModeList.appendChild(el);
+  }
+  appModeList.querySelectorAll('.dict-del').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const cur = (await window.api.prefs.getAll()).appModes || {};
+      delete cur[btn.dataset.key];
+      await window.api.prefs.set('appModes', cur);
+      loadAppModes();
+    });
+  });
+}
+
+document.getElementById('btn-app-add').addEventListener('click', async () => {
+  const app = appNameInput.value.trim();
+  const mode = appModeSel.value;
+  if (!app) return;
+  const cur = (await window.api.prefs.getAll()).appModes || {};
+  cur[app] = mode;
+  await window.api.prefs.set('appModes', cur);
+  appNameInput.value = '';
+  loadAppModes();
+});
+
 // ── Correction Dictionary ─────────────────────────────────────────────
 const dictList = document.getElementById('dict-list');
 const dictFrom = document.getElementById('dict-from');
@@ -130,6 +219,47 @@ document.getElementById('btn-dict-add').addEventListener('click', async () => {
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function escAttr(s) { return s.replace(/"/g,'&quot;'); }
 
+// ── Snippets ──────────────────────────────────────────────────────────
+const snippetList = document.getElementById('snippet-list');
+const snipTrigger = document.getElementById('snip-trigger');
+const snipExpansion = document.getElementById('snip-expansion');
+
+async function loadSnippets() {
+  const all = await window.api.snippets.getAll();
+  snippetList.innerHTML = '';
+  if (Object.keys(all).length === 0) {
+    snippetList.innerHTML = '';
+  }
+  for (const [trigger, expansion] of Object.entries(all)) {
+    const el = document.createElement('div');
+    el.className = 'dict-entry';
+    const preview = expansion.length > 30 ? expansion.slice(0, 30) + '...' : expansion;
+    el.innerHTML = `
+      <span class="dict-from">${escHtml(trigger)}</span>
+      <span class="dict-arrow-sm">→</span>
+      <span class="dict-to">${escHtml(preview)}</span>
+      <button class="dict-del" data-key="${escAttr(trigger)}">✕</button>
+    `;
+    snippetList.appendChild(el);
+  }
+  snippetList.querySelectorAll('.dict-del').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await window.api.snippets.remove(btn.dataset.key);
+      loadSnippets();
+    });
+  });
+}
+
+document.getElementById('btn-snip-add').addEventListener('click', async () => {
+  const trigger = snipTrigger.value.trim();
+  const expansion = snipExpansion.value.trim();
+  if (!trigger || !expansion) return;
+  await window.api.snippets.add(trigger, expansion);
+  snipTrigger.value = '';
+  snipExpansion.value = '';
+  loadSnippets();
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────
 function acceleratorToDisplay(accel) {
   return accel
@@ -142,4 +272,7 @@ function acceleratorToDisplay(accel) {
 
 // ── Init ──────────────────────────────────────────────────────────────
 loadPrefs();
+loadAIModes();
+loadAppModes();
 loadDict();
+loadSnippets();

@@ -46,6 +46,18 @@ contextBridge.exposeInMainWorld('api', {
     removeFromDict: (wrong) => ipcRenderer.invoke('corrections:removeFromDict', wrong),
   },
 
+  // ── Snippets ──
+  snippets: {
+    getAll: () => ipcRenderer.invoke('snippets:getAll'),
+    add: (trigger, expansion) => ipcRenderer.invoke('snippets:add', trigger, expansion),
+    remove: (trigger) => ipcRenderer.invoke('snippets:remove', trigger),
+  },
+
+  // ── AI modes ──
+  aiModes: {
+    list: () => ipcRenderer.invoke('aiModes:list'),
+  },
+
   // ── i18n ──
   i18n: {
     getStrings: () => ipcRenderer.invoke('i18n:getStrings'),

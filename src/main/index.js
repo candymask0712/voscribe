@@ -5,7 +5,7 @@ const os = require('os');
 
 const preferences = require('./preferences');
 const permissions = require('./permissions');
-const { pasteText, replaceLastText, saveTargetApp, activateTargetApp } = require('./clipboard-paste');
+const clipboard = require('./clipboard-paste');
 const TranscriberBridge = require('./transcriber');
 const ShortcutManager = require('./shortcut');
 const TrayManager = require('./tray');
@@ -15,35 +15,35 @@ const SettingsWindow = require('./settings-window');
 const EditWindow = require('./edit-window');
 const correctionStore = require('./correction-store');
 const sounds = require('./sounds');
+const { postProcess } = require('./post-process');
+const aiModes = require('./ai-modes');
+const snippets = require('./snippets');
 const i18n = require('../locales');
 
-// ── Single instance lock ──────────────────────────────────────────────
+// ── Single instance ───────────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) { app.quit(); }
 
-// ── App-wide state ────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────────
 let tray, shortcuts, overlay, transcriber, onboardingWin, settingsWin, editWin;
 let isRecording = false;
 let permissionPollTimer = null;
-let lastTranscription = null; // {text, timestamp} — for edit popup
+let lastTranscription = null;
+let selectedTextContext = null;
 
 // ── App lifecycle ─────────────────────────────────────────────────────
 app.whenReady().then(() => {
-  // Menu-bar-only app — hide dock icon
   if (app.dock) app.dock.hide();
 
-  // Auto-approve microphone permission requests inside renderers
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => {
     cb(perm === 'media' || perm === 'microphone');
   });
   session.defaultSession.setPermissionCheckHandler(() => true);
 
-  // Initialize locale
   const uiLang = preferences.get('uiLanguage') || 'auto';
   const sysLang = app.getLocale().startsWith('ko') ? 'ko' : 'en';
   i18n.load(uiLang === 'auto' ? sysLang : uiLang);
 
-  // Initialize managers
   transcriber = new TranscriberBridge();
   overlay = new OverlayManager();
   shortcuts = new ShortcutManager();
@@ -53,15 +53,13 @@ app.whenReady().then(() => {
   tray = new TrayManager({
     onSettingsClick: () => settingsWin.show(),
     onHistoryClick: async (text) => {
-      await saveTargetApp();
-      await pasteText(text);
+      await clipboard.saveTargetApp();
+      await clipboard.pasteText(text);
     },
   });
 
-  // Register IPC handlers
   registerIPC();
 
-  // Decide entry flow
   if (!preferences.get('onboardingCompleted')) {
     showOnboarding();
   } else {
@@ -69,34 +67,25 @@ app.whenReady().then(() => {
   }
 });
 
-app.on('window-all-closed', () => { /* menu-bar app — stay alive */ });
-
+app.on('window-all-closed', () => {});
 app.on('will-quit', () => {
   if (shortcuts) shortcuts.unregisterAll();
   if (transcriber) transcriber.stop();
   if (permissionPollTimer) clearInterval(permissionPollTimer);
 });
-
-app.on('second-instance', () => {
-  // If user launches again, just show settings
-  if (settingsWin) settingsWin.show();
-});
+app.on('second-instance', () => { if (settingsWin) settingsWin.show(); });
 
 // ── Onboarding ────────────────────────────────────────────────────────
 function showOnboarding() {
   onboardingWin = new OnboardingWindow();
   onboardingWin.show(() => {
-    // Called when onboarding window closes
-    if (preferences.get('onboardingCompleted')) {
-      bootApp();
-    }
+    if (preferences.get('onboardingCompleted')) bootApp();
   });
 }
 
-// ── Boot (post-onboarding) ────────────────────────────────────────────
+// ── Boot ──────────────────────────────────────────────────────────────
 async function bootApp() {
   const perms = await permissions.checkAll();
-
   if (!perms.accessibility || !perms.microphone) {
     tray.setStatus('waiting_permissions');
     permissionPollTimer = setInterval(async () => {
@@ -109,7 +98,6 @@ async function bootApp() {
     }, 2000);
     return;
   }
-
   loadModel();
 }
 
@@ -117,18 +105,17 @@ async function loadModel() {
   tray.setStatus('loading_model');
   try {
     transcriber.start();
-    const modelId = preferences.get('modelId');
-    await transcriber.loadModel(modelId);
+    await transcriber.loadModel(preferences.get('modelId'));
     tray.setStatus('ready');
-    registerHotkey();
+    registerHotkeys();
   } catch (err) {
     console.error('Model load failed:', err.message);
     tray.setStatus('error');
   }
 }
 
-// ── Hotkey ─────────────────────────────────────────────────────────────
-function registerHotkey() {
+// ── Hotkeys ───────────────────────────────────────────────────────────
+function registerHotkeys() {
   shortcuts.unregisterAll();
   const accel = preferences.get('hotkeyAccelerator') || 'Alt+Space';
   shortcuts.register(accel, () => toggleRecording());
@@ -136,28 +123,22 @@ function registerHotkey() {
   shortcuts.register('Alt+Shift+Z', () => undoLastPaste());
 }
 
-// ── Recording flow ────────────────────────────────────────────────────
+// ── Recording ─────────────────────────────────────────────────────────
 async function toggleRecording() {
-  if (isRecording) {
-    stopRecording();
-  } else {
-    startRecording();
-  }
+  isRecording ? stopRecording() : startRecording();
 }
 
 async function startRecording() {
   if (isRecording) return;
   isRecording = true;
 
-  // Remember which app the user is working in BEFORE showing anything
-  await saveTargetApp();
+  await clipboard.saveTargetApp();
+  selectedTextContext = await clipboard.getSelectedText();
 
   sounds.playStart();
   tray.setStatus('recording');
   await overlay.showRecording();
   overlay.startAudioCapture(preferences.get('micDeviceId'));
-
-  // Register Escape to cancel while recording
   shortcuts.register('Escape', () => cancelRecording());
 }
 
@@ -170,11 +151,9 @@ function stopRecording() {
   tray.setStatus('transcribing');
 
   if (preferences.get('learningMode')) {
-    // Learning mode: hide overlay immediately — edit popup will appear later
     overlay.stopAudioCapture();
     overlay.hide();
   } else {
-    // Default mode: show "Transcribing..." in overlay while processing
     overlay.showTranscribing();
     overlay.stopAudioCapture();
   }
@@ -183,24 +162,22 @@ function stopRecording() {
 function cancelRecording() {
   if (!isRecording) return;
   isRecording = false;
-
   shortcuts.unregister('Escape');
   overlay.stopAudioCapture();
   overlay.hide();
   tray.setStatus('ready');
 }
 
-// ── Undo last paste ───────────────────────────────────────────────────
+// ── Undo ──────────────────────────────────────────────────────────────
 async function undoLastPaste() {
   if (!lastTranscription || isRecording) return;
-  const text = lastTranscription.text;
-  console.log('[DEBUG] Undo:', text.length, 'chars');
   try {
     const { execFile } = require('child_process');
+    const len = lastTranscription.text.length;
     await new Promise((resolve, reject) => {
       execFile('osascript', ['-e', `
         tell application "System Events"
-          repeat ${text.length} times
+          repeat ${len} times
             key code 51
           end repeat
         end tell
@@ -209,183 +186,150 @@ async function undoLastPaste() {
     lastTranscription = null;
     sounds.play('Frog');
   } catch (err) {
-    console.error('[DEBUG] Undo failed:', err.message);
+    console.error('Undo failed:', err.message);
   }
 }
 
 // ── Edit popup ────────────────────────────────────────────────────────
 function openEditPopup() {
-  if (!lastTranscription) return;
-  if (isRecording) return;
+  if (!lastTranscription || isRecording) return;
   editWin.show(lastTranscription.text);
+}
+
+// ── Transcription pipeline ────────────────────────────────────────────
+async function processAudioData(wavArrayBuffer) {
+  const bufSize = wavArrayBuffer
+    ? (wavArrayBuffer.byteLength || Buffer.byteLength(wavArrayBuffer))
+    : 0;
+
+  if (bufSize < 10000) {
+    overlay.hide();
+    tray.setStatus('ready');
+    return;
+  }
+
+  const tmpPath = path.join(os.tmpdir(), `voscribe_${Date.now()}.wav`);
+  try {
+    fs.writeFileSync(tmpPath, Buffer.from(wavArrayBuffer));
+
+    // 1. ASR transcription
+    const rawText = await transcriber.transcribe(tmpPath, {
+      maxTokens: preferences.get('maxTokens'),
+      language: preferences.get('asrLanguage') || 'auto',
+      contextVocab: correctionStore.getContextVocabulary(),
+    });
+
+    // 2. Post-processing pipeline: filler removal → corrections → snippets → AI mode
+    const cleaned = rawText ? postProcess(rawText.trim()) : '';
+    let text = cleaned ? correctionStore.applyCorrections(cleaned) : '';
+
+    const snippetMatch = text ? snippets.matchSnippet(text) : null;
+    if (snippetMatch) text = snippetMatch;
+
+    const appModes = preferences.get('appModes') || {};
+    const targetApp = clipboard.getTargetAppName();
+    const modeId = (targetApp && appModes[targetApp]) || preferences.get('aiMode') || 'raw';
+
+    if (text && modeId !== 'raw' && !snippetMatch) {
+      text = await aiModes.applyMode(modeId, text, {
+        endpoint: preferences.get('aiEndpoint'),
+        model: preferences.get('aiModel'),
+        apiKey: preferences.get('aiApiKey'),
+      }, selectedTextContext);
+    }
+
+    // 3. Output
+    overlay.hide();
+
+    if (text) {
+      lastTranscription = { text, timestamp: Date.now() };
+      tray.addHistory(text);
+
+      if (preferences.get('learningMode')) {
+        editWin.show(text);
+      } else {
+        await clipboard.pasteText(text);
+      }
+    }
+    tray.setStatus('ready');
+  } catch (err) {
+    console.error('Transcription error:', err.message);
+    overlay.showError('Transcription failed');
+    setTimeout(() => { overlay.hide(); tray.setStatus('ready'); }, 3000);
+  } finally {
+    try { fs.unlinkSync(tmpPath); } catch {}
+  }
 }
 
 // ── IPC handlers ──────────────────────────────────────────────────────
 function registerIPC() {
-  // Audio data from overlay renderer after recording stops
-  ipcMain.on('audio-data', async (_event, wavArrayBuffer) => {
-    const bufSize = wavArrayBuffer ? (wavArrayBuffer.byteLength || Buffer.byteLength(wavArrayBuffer)) : 0;
-    console.log('[DEBUG] audio-data received, size:', bufSize);
+  // Audio data from overlay renderer
+  ipcMain.on('audio-data', (_e, buf) => processAudioData(buf));
 
-    // Skip if audio is too short (< 0.3s at 16kHz 16-bit mono = ~9644 bytes + 44 header)
-    if (bufSize < 10000) {
-      console.log('[DEBUG] Audio too short, skipping transcription');
-      overlay.hide();
-      tray.setStatus('ready');
-      return;
-    }
-
-    const tmpPath = path.join(os.tmpdir(), `voscribe_${Date.now()}.wav`);
-    try {
-      fs.writeFileSync(tmpPath, Buffer.from(wavArrayBuffer));
-      const stat = fs.statSync(tmpPath);
-      console.log('[DEBUG] WAV file written:', tmpPath, 'size:', stat.size);
-
-      const lang = preferences.get('asrLanguage') || 'auto';
-      const vocab = correctionStore.getContextVocabulary();
-      console.log('[DEBUG] Transcribing with lang:', lang, 'vocab:', vocab.length, 'items');
-      const rawText = await transcriber.transcribe(tmpPath, {
-        maxTokens: preferences.get('maxTokens'),
-        language: lang,
-        contextVocab: vocab,
-      });
-      console.log('[DEBUG] Transcription result:', JSON.stringify(rawText));
-
-      // Apply post-processing correction dictionary
-      const text = rawText ? correctionStore.applyCorrections(rawText.trim()) : '';
-      console.log('[DEBUG] After corrections:', JSON.stringify(text));
-
-      overlay.hide();
-
-      if (text) {
-        lastTranscription = { text, timestamp: Date.now() };
-        tray.addHistory(text);
-        const isLearning = preferences.get('learningMode');
-        console.log('[DEBUG] learningMode:', isLearning);
-
-        if (isLearning) {
-          // Learning mode: show only the edit popup (no overlay)
-          console.log('[DEBUG] Opening edit popup');
-          editWin.show(text);
-        } else {
-          // Default mode: paste directly
-          console.log('[DEBUG] Pasting text...');
-          await pasteText(text);
-          console.log('[DEBUG] Paste complete');
-        }
-      } else {
-        console.log('[DEBUG] Empty transcription, skipping');
-      }
-      tray.setStatus('ready');
-    } catch (err) {
-      console.error('[DEBUG] Transcription error:', err.message, err.stack);
-      overlay.showError('Transcription failed');
-      setTimeout(() => {
-        overlay.hide();
-        tray.setStatus('ready');
-      }, 3000);
-    } finally {
-      try { fs.unlinkSync(tmpPath); } catch {}
-    }
-  });
-
-  // Preferences get/set
-  ipcMain.handle('prefs:get', (_event, key) => preferences.get(key));
-  ipcMain.handle('prefs:set', (_event, key, value) => {
-    console.log('[DEBUG] prefs:set', key, '=', value);
-    preferences.set(key, value);
-    // If hotkey changed, re-register
-    if (key === 'hotkeyAccelerator' && transcriber && transcriber.isLoaded()) {
-      registerHotkey();
-    }
-  });
-  ipcMain.handle('prefs:getAll', () => preferences.getAll());
-
-  // i18n
-  ipcMain.handle('i18n:getStrings', () => i18n.getAllStrings());
-
-  // Permissions
-  ipcMain.handle('perms:check', () => permissions.checkAll());
-  ipcMain.handle('perms:requestAccessibility', () => {
-    permissions.requestAccessibility();
-  });
-  ipcMain.handle('perms:requestMicrophone', () => permissions.requestMicrophone());
-
-  // Transcriber commands (used by onboarding)
-  ipcMain.handle('transcriber:start', () => {
-    transcriber.start();
-    return true;
-  });
-  ipcMain.handle('transcriber:checkModel', (_e, modelId) =>
-    transcriber.checkModel(modelId)
-  );
-  ipcMain.handle('transcriber:getModelSize', (_e, modelId) =>
-    transcriber.getModelSize(modelId)
-  );
-  ipcMain.handle('transcriber:downloadModel', (_e, modelId) =>
-    transcriber.downloadModel(modelId)
-  );
-  ipcMain.handle('transcriber:loadModel', async (_e, modelId) => {
-    await transcriber.loadModel(modelId);
-    return true;
-  });
-  ipcMain.handle('transcriber:isLoaded', () => transcriber.isLoaded());
-
-  // Close onboarding and boot app
-  ipcMain.handle('onboarding:complete', () => {
-    preferences.set('onboardingCompleted', true);
-    if (onboardingWin) onboardingWin.close();
-    bootApp();
-  });
-
-  // Audio devices enumeration (from renderer)
-  ipcMain.handle('audio:devices', async () => {
-    // Renderer will enumerate via navigator.mediaDevices
-    return true;
-  });
-
-  // ── Edit popup result ───────────────────────────────────────────────
-  ipcMain.on('edit:result', async (_event, result) => {
+  // Edit popup result
+  ipcMain.on('edit:result', async (_e, result) => {
     editWin.hide();
-
-    // Edit window had focus — restore focus to target app before pasting
-    await activateTargetApp();
+    await clipboard.activateTargetApp();
 
     if (!result || !lastTranscription) {
-      // Cancelled — still paste the original
-      if (lastTranscription) {
-        await pasteText(lastTranscription.text);
-      }
+      if (lastTranscription) await clipboard.pasteText(lastTranscription.text);
       tray.setStatus('ready');
       return;
     }
 
-    const textToPaste = result.corrected;
-
-    // Record correction if text was modified
     if (result.changed) {
       correctionStore.recordCorrection(result.original, result.corrected);
-      console.log('[DEBUG] Correction recorded:', result.original, '→', result.corrected);
     }
 
-    // Paste the (possibly corrected) text into the target app
     try {
-      await pasteText(textToPaste);
-      lastTranscription.text = textToPaste;
-      console.log('[DEBUG] Paste complete after edit');
+      await clipboard.pasteText(result.corrected);
+      lastTranscription.text = result.corrected;
     } catch (err) {
       console.error('Paste failed:', err.message);
     }
     tray.setStatus('ready');
   });
 
-  // ── Correction store ────────────────────────────────────────────────
+  // Preferences
+  ipcMain.handle('prefs:get', (_e, key) => preferences.get(key));
+  ipcMain.handle('prefs:set', (_e, key, value) => {
+    preferences.set(key, value);
+    if (key === 'hotkeyAccelerator' && transcriber && transcriber.isLoaded()) {
+      registerHotkeys();
+    }
+  });
+  ipcMain.handle('prefs:getAll', () => preferences.getAll());
+
+  // i18n & AI modes & Snippets
+  ipcMain.handle('i18n:getStrings', () => i18n.getAllStrings());
+  ipcMain.handle('aiModes:list', () => aiModes.getModeList());
+  ipcMain.handle('snippets:getAll', () => snippets.getAll());
+  ipcMain.handle('snippets:add', (_e, t, exp) => snippets.add(t, exp));
+  ipcMain.handle('snippets:remove', (_e, t) => snippets.remove(t));
+
+  // Corrections
   ipcMain.handle('corrections:getDict', () => correctionStore.getDictionary());
   ipcMain.handle('corrections:getLog', () => correctionStore.getLog());
-  ipcMain.handle('corrections:addToDict', (_e, wrong, correct) => {
-    correctionStore.addToDictionary(wrong, correct);
-  });
-  ipcMain.handle('corrections:removeFromDict', (_e, wrong) => {
-    correctionStore.removeFromDictionary(wrong);
+  ipcMain.handle('corrections:addToDict', (_e, w, c) => correctionStore.addToDictionary(w, c));
+  ipcMain.handle('corrections:removeFromDict', (_e, w) => correctionStore.removeFromDictionary(w));
+
+  // Permissions
+  ipcMain.handle('perms:check', () => permissions.checkAll());
+  ipcMain.handle('perms:requestAccessibility', () => permissions.requestAccessibility());
+  ipcMain.handle('perms:requestMicrophone', () => permissions.requestMicrophone());
+
+  // Transcriber (onboarding)
+  ipcMain.handle('transcriber:start', () => { transcriber.start(); return true; });
+  ipcMain.handle('transcriber:checkModel', (_e, id) => transcriber.checkModel(id));
+  ipcMain.handle('transcriber:getModelSize', (_e, id) => transcriber.getModelSize(id));
+  ipcMain.handle('transcriber:downloadModel', (_e, id) => transcriber.downloadModel(id));
+  ipcMain.handle('transcriber:loadModel', async (_e, id) => { await transcriber.loadModel(id); return true; });
+  ipcMain.handle('transcriber:isLoaded', () => transcriber.isLoaded());
+
+  // Onboarding complete
+  ipcMain.handle('onboarding:complete', () => {
+    preferences.set('onboardingCompleted', true);
+    if (onboardingWin) onboardingWin.close();
+    bootApp();
   });
 }
