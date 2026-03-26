@@ -34,6 +34,8 @@ function loadDict() {
   if (_dict) return;
   try {
     _dict = JSON.parse(fs.readFileSync(DICT_FILE, 'utf-8'));
+    _pruneDict();
+    saveDict();
   } catch {
     _dict = {};
   }
@@ -110,6 +112,43 @@ function extractCorrections(original, corrected) {
   return pairs;
 }
 
+// ── Dictionary pruning ────────────────────────────────────────────────
+
+/**
+ * Remove redundant dictionary entries:
+ * 1. Long entries (>30 chars) that are covered by a shorter stem
+ * 2. Entries where the key is a substring extension of another key
+ *    (e.g., "리액트를" is redundant when "리액트" exists)
+ */
+function _pruneDict() {
+  if (!_dict) return;
+
+  const keys = Object.keys(_dict);
+  // Sort shortest first — short stems take priority
+  keys.sort((a, b) => a.length - b.length);
+
+  const keep = {};
+  for (const key of keys) {
+    // Skip long full-sentence entries (>30 chars)
+    if (key.length > 30) continue;
+
+    // Check if this key is already covered by a shorter existing key
+    let covered = false;
+    for (const existing of Object.keys(keep)) {
+      if (key.includes(existing) && key !== existing) {
+        covered = true;
+        break;
+      }
+    }
+
+    if (!covered) {
+      keep[key] = _dict[key];
+    }
+  }
+
+  _dict = keep;
+}
+
 // ── Public API ────────────────────────────────────────────────────────
 
 /**
@@ -145,6 +184,11 @@ function recordCorrection(originalText, correctedText) {
       _dict[original] = corrected;
       promoted.push({ original, corrected });
     }
+  }
+
+  // Clean up redundant entries after every promotion
+  if (promoted.length > 0) {
+    _pruneDict();
   }
 
   saveLog();
@@ -210,6 +254,7 @@ function getLog() {
 function addToDictionary(wrong, correct) {
   loadDict();
   _dict[wrong] = correct;
+  _pruneDict();
   saveDict();
 }
 
