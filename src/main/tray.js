@@ -1,16 +1,21 @@
 const { Tray, Menu, nativeImage, app } = require('electron');
 const path = require('path');
 const fs = require('fs');
+let i18n;
+try { i18n = require('../locales'); } catch { i18n = { t: (k) => k }; }
 
 // 16x16 transparent PNG (base64) — used as minimal tray icon
 const TRANSPARENT_1PX =
   'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=';
+
+const MAX_HISTORY = 10;
 
 class TrayManager {
   constructor(callbacks = {}) {
     this._callbacks = callbacks;
     this._status = 'initializing';
     this._tray = null;
+    this._history = []; // [{text, timestamp}]
     this._create();
   }
 
@@ -64,17 +69,9 @@ class TrayManager {
   }
 
   _statusLabel() {
-    const map = {
-      initializing: '  Initializing...',
-      waiting_permissions: '  Waiting for permissions...',
-      loading_model: '  Loading model...',
-      downloading_model: '  Downloading model...',
-      ready: '  Ready',
-      recording: '  Recording...',
-      transcribing: '  Transcribing...',
-      error: '  Error',
-    };
-    return map[this._status] || `  ${this._status}`;
+    const t = i18n.t || ((k) => k);
+    const key = `status_${this._status}`;
+    return `  ${t(key)}`;
   }
 
   _rebuildMenu() {
@@ -87,12 +84,27 @@ class TrayManager {
       { type: 'separator' },
     ];
 
-    if (this._callbacks.onSettingsClick) {
-      template.push({ label: 'Settings...', click: this._callbacks.onSettingsClick });
+    // History submenu
+    if (this._history.length > 0) {
+      const histItems = this._history.map((h) => {
+        const preview = h.text.length > 40 ? h.text.slice(0, 40) + '...' : h.text;
+        return {
+          label: preview,
+          click: () => {
+            if (this._callbacks.onHistoryClick) this._callbacks.onHistoryClick(h.text);
+          },
+        };
+      });
+      template.push({ label: i18n.t('recent'), submenu: histItems });
       template.push({ type: 'separator' });
     }
 
-    template.push({ label: 'Quit voscribe', click: () => app.quit() });
+    if (this._callbacks.onSettingsClick) {
+      template.push({ label: i18n.t('settings'), click: this._callbacks.onSettingsClick });
+      template.push({ type: 'separator' });
+    }
+
+    template.push({ label: i18n.t('quit'), click: () => app.quit() });
 
     this._tray.setContextMenu(Menu.buildFromTemplate(template));
   }
@@ -109,6 +121,12 @@ class TrayManager {
     } else {
       this._tray.setTitle('');
     }
+  }
+
+  addHistory(text) {
+    this._history.unshift({ text, timestamp: Date.now() });
+    if (this._history.length > MAX_HISTORY) this._history.pop();
+    this._rebuildMenu();
   }
 
   getStatus() {

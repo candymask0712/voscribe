@@ -46,6 +46,11 @@ contextBridge.exposeInMainWorld('api', {
     removeFromDict: (wrong) => ipcRenderer.invoke('corrections:removeFromDict', wrong),
   },
 
+  // ── i18n ──
+  i18n: {
+    getStrings: () => ipcRenderer.invoke('i18n:getStrings'),
+  },
+
   // ── Listen (main → renderer) ──
   onOverlayState: (cb) => {
     const handler = (_e, state, data) => cb(state, data);

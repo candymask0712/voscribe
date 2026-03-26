@@ -10,6 +10,7 @@ class TranscriberBridge {
     this._pending = new Map();
     this._nextId = 0;
     this._loaded = false;
+    this._lastModelId = null;
   }
 
   _findPython() {
@@ -72,12 +73,28 @@ class TranscriberBridge {
 
     this._process.on('exit', (code) => {
       console.log(`[ASR] exited with code ${code}`);
+      const wasLoaded = this._loaded;
       this._process = null;
       this._loaded = false;
       for (const [, { reject }] of this._pending) {
         reject(new Error('ASR process exited'));
       }
       this._pending.clear();
+
+      // Auto-restart if it was previously loaded (unexpected crash)
+      if (wasLoaded && code !== 0) {
+        console.log('[ASR] unexpected exit — auto-restarting in 2s...');
+        setTimeout(() => {
+          try {
+            this.start();
+            this._send('load_model', { model_id: this._lastModelId || 'mlx-community/Qwen3-ASR-1.7B-8bit' }, 600000)
+              .then(() => { this._loaded = true; console.log('[ASR] auto-restart: model reloaded'); })
+              .catch((err) => console.error('[ASR] auto-restart: reload failed', err.message));
+          } catch (err) {
+            console.error('[ASR] auto-restart failed:', err.message);
+          }
+        }, 2000);
+      }
     });
   }
 
@@ -123,6 +140,7 @@ class TranscriberBridge {
   }
 
   async loadModel(modelId) {
+    this._lastModelId = modelId;
     const r = await this._send('load_model', { model_id: modelId }, 600000);
     this._loaded = true;
     return r;

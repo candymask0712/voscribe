@@ -89,6 +89,47 @@ selMic.addEventListener('change', () => {
   window.api.prefs.set('micDeviceId', selMic.value || null);
 });
 
+// ── Correction Dictionary ─────────────────────────────────────────────
+const dictList = document.getElementById('dict-list');
+const dictFrom = document.getElementById('dict-from');
+const dictTo = document.getElementById('dict-to');
+
+async function loadDict() {
+  const dict = await window.api.corrections.getDict();
+  dictList.innerHTML = '';
+  for (const [from, to] of Object.entries(dict)) {
+    const el = document.createElement('div');
+    el.className = 'dict-entry';
+    el.innerHTML = `
+      <span class="dict-from">${escHtml(from)}</span>
+      <span class="dict-arrow-sm">→</span>
+      <span class="dict-to">${escHtml(to)}</span>
+      <button class="dict-del" data-key="${escAttr(from)}">✕</button>
+    `;
+    dictList.appendChild(el);
+  }
+  // Attach delete handlers
+  dictList.querySelectorAll('.dict-del').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await window.api.corrections.removeFromDict(btn.dataset.key);
+      loadDict();
+    });
+  });
+}
+
+document.getElementById('btn-dict-add').addEventListener('click', async () => {
+  const from = dictFrom.value.trim();
+  const to = dictTo.value.trim();
+  if (!from || !to || from === to) return;
+  await window.api.corrections.addToDict(from, to);
+  dictFrom.value = '';
+  dictTo.value = '';
+  loadDict();
+});
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s) { return s.replace(/"/g,'&quot;'); }
+
 // ── Helpers ───────────────────────────────────────────────────────────
 function acceleratorToDisplay(accel) {
   return accel
@@ -101,3 +142,4 @@ function acceleratorToDisplay(accel) {
 
 // ── Init ──────────────────────────────────────────────────────────────
 loadPrefs();
+loadDict();

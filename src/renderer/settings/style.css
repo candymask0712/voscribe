@@ -92,6 +92,44 @@ select {
   font-size: 11px; color: #636366; margin-top: 6px; padding: 0 4px;
 }
 
+/* Dictionary list */
+.dict-list {
+  max-height: 180px; overflow-y: auto;
+  border-radius: 10px; background: #2c2c2e;
+  margin-bottom: 8px;
+}
+.dict-list:empty::after {
+  content: 'No corrections yet';
+  display: block; padding: 12px; text-align: center;
+  font-size: 12px; color: #636366;
+}
+.dict-entry {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px; border-bottom: 1px solid #3a3a3c;
+  font-size: 13px;
+}
+.dict-entry:last-child { border-bottom: none; }
+.dict-from { color: #ff6b6b; flex-shrink: 0; }
+.dict-arrow-sm { color: #636366; font-size: 11px; }
+.dict-to { color: #30d158; flex: 1; }
+.dict-del {
+  background: none; border: none; color: #636366;
+  cursor: pointer; font-size: 14px; padding: 0 4px;
+  transition: color 0.15s;
+}
+.dict-del:hover { color: #ff453a; }
+
+.dict-add {
+  display: flex; align-items: center; gap: 6px;
+}
+.dict-add input {
+  flex: 1; padding: 6px 10px; border-radius: 6px;
+  border: 1px solid #48484a; background: #1c1c1e;
+  color: #f5f5f7; font-size: 13px; outline: none;
+}
+.dict-add input:focus { border-color: #0a84ff; }
+.dict-arrow { color: #636366; font-size: 14px; }
+
 .about {
   text-align: center; padding-top: 16px;
   border-top: 1px solid #2c2c2e;

@@ -14,6 +14,8 @@ const OnboardingWindow = require('./onboarding-window');
 const SettingsWindow = require('./settings-window');
 const EditWindow = require('./edit-window');
 const correctionStore = require('./correction-store');
+const sounds = require('./sounds');
+const i18n = require('../locales');
 
 // ── Single instance lock ──────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
@@ -36,6 +38,11 @@ app.whenReady().then(() => {
   });
   session.defaultSession.setPermissionCheckHandler(() => true);
 
+  // Initialize locale
+  const uiLang = preferences.get('uiLanguage') || 'auto';
+  const sysLang = app.getLocale().startsWith('ko') ? 'ko' : 'en';
+  i18n.load(uiLang === 'auto' ? sysLang : uiLang);
+
   // Initialize managers
   transcriber = new TranscriberBridge();
   overlay = new OverlayManager();
@@ -45,6 +52,10 @@ app.whenReady().then(() => {
 
   tray = new TrayManager({
     onSettingsClick: () => settingsWin.show(),
+    onHistoryClick: async (text) => {
+      await saveTargetApp();
+      await pasteText(text);
+    },
   });
 
   // Register IPC handlers
@@ -121,8 +132,8 @@ function registerHotkey() {
   shortcuts.unregisterAll();
   const accel = preferences.get('hotkeyAccelerator') || 'Alt+Space';
   shortcuts.register(accel, () => toggleRecording());
-  // Edit last transcription shortcut
   shortcuts.register('Alt+Shift+E', () => openEditPopup());
+  shortcuts.register('Alt+Shift+Z', () => undoLastPaste());
 }
 
 // ── Recording flow ────────────────────────────────────────────────────
@@ -141,6 +152,7 @@ async function startRecording() {
   // Remember which app the user is working in BEFORE showing anything
   await saveTargetApp();
 
+  sounds.playStart();
   tray.setStatus('recording');
   await overlay.showRecording();
   overlay.startAudioCapture(preferences.get('micDeviceId'));
@@ -153,6 +165,7 @@ function stopRecording() {
   if (!isRecording) return;
   isRecording = false;
 
+  sounds.playStop();
   shortcuts.unregister('Escape');
   tray.setStatus('transcribing');
 
@@ -175,6 +188,29 @@ function cancelRecording() {
   overlay.stopAudioCapture();
   overlay.hide();
   tray.setStatus('ready');
+}
+
+// ── Undo last paste ───────────────────────────────────────────────────
+async function undoLastPaste() {
+  if (!lastTranscription || isRecording) return;
+  const text = lastTranscription.text;
+  console.log('[DEBUG] Undo:', text.length, 'chars');
+  try {
+    const { execFile } = require('child_process');
+    await new Promise((resolve, reject) => {
+      execFile('osascript', ['-e', `
+        tell application "System Events"
+          repeat ${text.length} times
+            key code 51
+          end repeat
+        end tell
+      `], (err) => err ? reject(err) : resolve());
+    });
+    lastTranscription = null;
+    sounds.play('Frog');
+  } catch (err) {
+    console.error('[DEBUG] Undo failed:', err.message);
+  }
 }
 
 // ── Edit popup ────────────────────────────────────────────────────────
@@ -223,6 +259,7 @@ function registerIPC() {
 
       if (text) {
         lastTranscription = { text, timestamp: Date.now() };
+        tray.addHistory(text);
         const isLearning = preferences.get('learningMode');
         console.log('[DEBUG] learningMode:', isLearning);
 
@@ -263,6 +300,9 @@ function registerIPC() {
     }
   });
   ipcMain.handle('prefs:getAll', () => preferences.getAll());
+
+  // i18n
+  ipcMain.handle('i18n:getStrings', () => i18n.getAllStrings());
 
   // Permissions
   ipcMain.handle('perms:check', () => permissions.checkAll());
