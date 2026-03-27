@@ -7,28 +7,23 @@ class EditWindow {
   }
 
   show(originalText) {
+    // Always destroy and recreate to avoid stale window issues
     if (this._win && !this._win.isDestroyed()) {
-      // Reuse — update content
-      this._win.webContents.send('edit:load', originalText);
-      this._win.show();
-      this._win.focus();
-      return;
+      this._win.destroy();
+      this._win = null;
     }
 
-    // Position near cursor
     const cursor = screen.getCursorScreenPoint();
     const display = screen.getDisplayNearestPoint(cursor);
     const { x, y, width } = display.workArea;
     const winW = 420;
     const winH = 200;
-    const px = x + Math.round((width - winW) / 2);
-    const py = y + 120;
 
     this._win = new BrowserWindow({
       width: winW,
       height: winH,
-      x: px,
-      y: py,
+      x: x + Math.round((width - winW) / 2),
+      y: y + 120,
       resizable: false,
       maximizable: false,
       minimizable: false,
@@ -45,6 +40,7 @@ class EditWindow {
       },
     });
 
+    this._win.setAlwaysOnTop(true, 'screen-saver');
     this._win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
     this._win.loadFile(
@@ -53,8 +49,13 @@ class EditWindow {
 
     this._win.webContents.on('did-finish-load', () => {
       this._win.webContents.send('edit:load', originalText);
-      this._win.show();
-      this._win.focus();
+      this._win.showInactive();
+      // Use setTimeout to focus after the window is fully rendered
+      setTimeout(() => {
+        if (this._win && !this._win.isDestroyed()) {
+          this._win.focus();
+        }
+      }, 100);
     });
 
     this._win.on('closed', () => {
@@ -64,7 +65,8 @@ class EditWindow {
 
   hide() {
     if (this._win && !this._win.isDestroyed()) {
-      this._win.hide();
+      this._win.destroy();
+      this._win = null;
     }
   }
 
@@ -73,9 +75,7 @@ class EditWindow {
   }
 
   destroy() {
-    if (this._win && !this._win.isDestroyed()) {
-      this._win.destroy();
-    }
+    if (this._win && !this._win.isDestroyed()) this._win.destroy();
     this._win = null;
   }
 }

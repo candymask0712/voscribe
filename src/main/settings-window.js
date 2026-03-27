@@ -37,15 +37,22 @@ class SettingsWindow {
       this._win.center();
     });
 
-    this._win.on('closed', () => {
-      this._win = null;
+    // Destroy on close — prevent ghost window from reappearing
+    this._win.on('close', () => {
+      if (this._win && !this._win.isDestroyed()) this._win.destroy();
     });
+    this._win.on('closed', () => { this._win = null; });
   }
 
   close() {
     if (this._win && !this._win.isDestroyed()) {
-      this._win.close();
+      this._win.destroy();
+      this._win = null;
     }
+  }
+
+  forceClose() {
+    this.close();
   }
 }
 

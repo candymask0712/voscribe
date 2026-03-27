@@ -93,7 +93,7 @@ class TrayManager {
     this._rebuildMenu();
     if (status === 'recording') this._tray.setTitle(' REC');
     else if (status === 'transcribing') this._tray.setTitle(' ...');
-    else this._tray.setTitle('');
+    else this._tray.setTitle(' voscribe');
   }
 
   addHistory(text) {

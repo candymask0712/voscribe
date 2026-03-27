@@ -35,6 +35,22 @@ let selectedTextContext = null;
 app.whenReady().then(() => {
   if (app.dock) app.dock.hide();
 
+  // DIAGNOSTIC: Track every BrowserWindow creation and show
+  const { BrowserWindow } = require('electron');
+  app.on('browser-window-created', (_e, win) => {
+    const url = win.webContents.getURL() || 'loading...';
+    console.log('[WINDOW-TRACE] CREATED:', win.id, win.getTitle(), url);
+    win.webContents.on('did-finish-load', () => {
+      console.log('[WINDOW-TRACE] LOADED:', win.id, win.getTitle(), win.webContents.getURL());
+    });
+    win.on('show', () => {
+      console.log('[WINDOW-TRACE] SHOWN:', win.id, win.getTitle(), win.webContents.getURL());
+    });
+    win.on('focus', () => {
+      console.log('[WINDOW-TRACE] FOCUSED:', win.id, win.getTitle(), win.webContents.getURL());
+    });
+  });
+
   session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => {
     cb(perm === 'media' || perm === 'microphone');
   });
@@ -150,13 +166,9 @@ function stopRecording() {
   shortcuts.unregister('Escape');
   tray.setStatus('transcribing');
 
-  if (preferences.get('learningMode')) {
-    overlay.stopAudioCapture();
-    overlay.hide();
-  } else {
-    overlay.showTranscribing();
-    overlay.stopAudioCapture();
-  }
+  // Always hide overlay immediately — edit popup or direct paste follows
+  overlay.stopAudioCapture();
+  overlay.hide();
 }
 
 function cancelRecording() {
@@ -239,15 +251,20 @@ async function processAudioData(wavArrayBuffer) {
     }
 
     // 3. Output
-    overlay.hide();
+    overlay.destroy();
 
     if (text) {
       lastTranscription = { text, timestamp: Date.now() };
       tray.addHistory(text);
 
       if (preferences.get('learningMode')) {
+        // Learning mode: show edit popup for review
+        shortcuts.unregisterAll();
         editWin.show(text);
       } else {
+        // Default mode: hide app to return focus to target, then paste
+        app.hide();
+        await new Promise((r) => setTimeout(r, 300));
         await clipboard.pasteText(text);
       }
     }
@@ -268,12 +285,18 @@ function registerIPC() {
 
   // Edit popup result
   ipcMain.on('edit:result', async (_e, result) => {
-    editWin.hide();
-    await clipboard.activateTargetApp();
+    // Close all windows and hide the app — macOS returns focus to previous app
+    editWin.destroy();
+    overlay.destroy();
+    app.hide();
+
+    // Wait for OS to return focus to the target app
+    await new Promise((r) => setTimeout(r, 400));
 
     if (!result || !lastTranscription) {
       if (lastTranscription) await clipboard.pasteText(lastTranscription.text);
       tray.setStatus('ready');
+      registerHotkeys();
       return;
     }
 
@@ -288,6 +311,7 @@ function registerIPC() {
       console.error('Paste failed:', err.message);
     }
     tray.setStatus('ready');
+    registerHotkeys();
   });
 
   // Preferences

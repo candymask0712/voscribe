@@ -1,11 +1,47 @@
 const { clipboard } = require('electron');
 const { execFile } = require('child_process');
 
-function runAppleScript(script) {
+/**
+ * Simulate Cmd+V using macOS CGEvent API (via Python/Quartz).
+ * This is the same low-level approach used by vvrite — posts keyboard events
+ * directly to the system event queue without involving System Events or osascript.
+ */
+function simulateCmdV() {
   return new Promise((resolve, reject) => {
-    execFile('osascript', ['-e', script], (err, stdout) => {
+    execFile('python3', ['-c', `
+from Quartz import CGEventCreateKeyboardEvent, CGEventPost, CGEventSetFlags, kCGHIDEventTap, kCGEventFlagMaskCommand
+import time
+down = CGEventCreateKeyboardEvent(None, 0x09, True)
+CGEventSetFlags(down, kCGEventFlagMaskCommand)
+CGEventPost(kCGHIDEventTap, down)
+time.sleep(0.05)
+up = CGEventCreateKeyboardEvent(None, 0x09, False)
+CGEventSetFlags(up, kCGEventFlagMaskCommand)
+CGEventPost(kCGHIDEventTap, up)
+`], (err) => {
       if (err) reject(err);
-      else resolve(stdout.trim());
+      else resolve();
+    });
+  });
+}
+
+/**
+ * Simulate Delete key N times using CGEvent API.
+ */
+function simulateBackspace(count) {
+  return new Promise((resolve, reject) => {
+    execFile('python3', ['-c', `
+from Quartz import CGEventCreateKeyboardEvent, CGEventPost, kCGHIDEventTap
+import time
+for _ in range(${count}):
+    down = CGEventCreateKeyboardEvent(None, 0x33, True)
+    CGEventPost(kCGHIDEventTap, down)
+    up = CGEventCreateKeyboardEvent(None, 0x33, False)
+    CGEventPost(kCGHIDEventTap, up)
+    time.sleep(0.02)
+`], (err) => {
+      if (err) reject(err);
+      else resolve();
     });
   });
 }
@@ -15,26 +51,13 @@ let _savedAppName = null;
 
 async function saveTargetApp() {
   try {
-    _savedAppName = await runAppleScript(
-      'tell application "System Events" to get name of first application process whose frontmost is true'
-    );
+    _savedAppName = await new Promise((resolve, reject) => {
+      execFile('osascript', ['-e',
+        'tell application "System Events" to get name of first application process whose frontmost is true'
+      ], (err, stdout) => err ? reject(err) : resolve(stdout.trim()));
+    });
   } catch {
     _savedAppName = null;
-  }
-}
-
-async function activateTargetApp() {
-  if (!_savedAppName) return;
-  try {
-    await runAppleScript(`
-      tell application "System Events"
-        set frontProcess to first application process whose name is "${_savedAppName}"
-        set frontmost of frontProcess to true
-      end tell
-    `);
-    await new Promise((r) => setTimeout(r, 300));
-  } catch (err) {
-    console.error('Failed to activate target app:', err.message);
   }
 }
 
@@ -47,9 +70,7 @@ async function pasteText(text) {
   clipboard.writeText(text);
   await new Promise((r) => setTimeout(r, 150));
   try {
-    await runAppleScript(
-      'tell application "System Events" to keystroke "v" using command down'
-    );
+    await simulateCmdV();
   } catch (err) {
     console.error('Paste failed:', err.message);
   }
@@ -57,15 +78,8 @@ async function pasteText(text) {
 
 // ── Backspace + replace ───────────────────────────────────────────────
 async function replaceLastText(oldText, newText) {
-  await activateTargetApp();
   try {
-    await runAppleScript(`
-      tell application "System Events"
-        repeat ${oldText.length} times
-          key code 51
-        end repeat
-      end tell
-    `);
+    await simulateBackspace(oldText.length);
   } catch (err) {
     console.error('Backspace failed:', err.message);
   }
@@ -78,9 +92,20 @@ async function getSelectedText() {
   const saved = clipboard.readText();
   clipboard.writeText('');
   try {
-    await runAppleScript(
-      'tell application "System Events" to keystroke "c" using command down'
-    );
+    // Simulate Cmd+C using CGEvent
+    await new Promise((resolve, reject) => {
+      execFile('python3', ['-c', `
+from Quartz import CGEventCreateKeyboardEvent, CGEventPost, CGEventSetFlags, kCGHIDEventTap, kCGEventFlagMaskCommand
+import time
+down = CGEventCreateKeyboardEvent(None, 0x08, True)
+CGEventSetFlags(down, kCGEventFlagMaskCommand)
+CGEventPost(kCGHIDEventTap, down)
+time.sleep(0.05)
+up = CGEventCreateKeyboardEvent(None, 0x08, False)
+CGEventSetFlags(up, kCGEventFlagMaskCommand)
+CGEventPost(kCGHIDEventTap, up)
+`], (err) => err ? reject(err) : resolve());
+    });
     await new Promise((r) => setTimeout(r, 150));
     const selected = clipboard.readText();
     clipboard.writeText(saved || '');
@@ -90,4 +115,4 @@ async function getSelectedText() {
   return null;
 }
 
-module.exports = { pasteText, replaceLastText, saveTargetApp, activateTargetApp, getSelectedText, getTargetAppName };
+module.exports = { pasteText, replaceLastText, saveTargetApp, getSelectedText, getTargetAppName };
